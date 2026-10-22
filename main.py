@@ -4,7 +4,8 @@ import json
 import requests
 import feedparser
 from bs4 import BeautifulSoup
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from datetime import datetime
 
 # ১. সিন্দুক থেকে গোপন তথ্যগুলো (Secrets) বের করা
@@ -12,15 +13,13 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 TELE_BOT_TOKEN = os.environ.get("TELE_BOT_TOKEN")
 TELE_CHAT_ID = os.environ.get("TELE_CHAT_ID")
 
-# ২. জেমিনি সেটআপ
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
+# ২. নতুন জেমিনি ক্লায়েন্ট সেটআপ (আপডেটেড SDK)
+client = genai.Client(api_key=GEMINI_API_KEY)
+MODEL_ID = 'gemini-2.0-flash'
 
-# সংশোধনী ১: মেসেজ খণ্ডিত করার ব্যবস্থা ও HTML ফলব্যাক মেকানিজম
 def send_to_telegram(message):
     tele_url = f"https://api.telegram.org/bot{TELE_BOT_TOKEN}/sendMessage"
     
-    # মেসেজ ৪০০০ ক্যারেক্টারের বেশি হলে খণ্ডিত করে পাঠানো
     for i in range(0, len(message), 4000):
         chunk = message[i:i+4000]
         payload = {
@@ -30,7 +29,6 @@ def send_to_telegram(message):
         }
         
         response = requests.post(tele_url, json=payload)
-        # যদি HTML ট্যাগ মাঝখান থেকে কাটার কারণে এরর দেয়, তবে সাধারণ টেক্সট হিসেবে পাঠানো
         if response.status_code != 200:
             print("HTML পার্সিং এরর, সাধারণ টেক্সট হিসেবে পাঠানো হচ্ছে...")
             payload["parse_mode"] = "" 
@@ -58,10 +56,13 @@ Titles:
 """
 
 try:
-    # নেটিভ JSON এনফোর্সমেন্ট
-    screening_response = model.generate_content(
-        screening_prompt,
-        generation_config={"response_mime_type": "application/json"}
+    # নতুন SDK-তে JSON এনফোর্সমেন্ট
+    screening_response = client.models.generate_content(
+        model=MODEL_ID,
+        contents=screening_prompt,
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+        )
     )
     selected_indices = json.loads(screening_response.text)
 except Exception as e:
@@ -70,7 +71,6 @@ except Exception as e:
 
 print(f"বাছাই করা খবরের ইনডেক্স: {selected_indices}")
 
-# আজকের তারিখ সংগ্রহ
 today_date = datetime.now().strftime("%Y-%m-%d")
 
 count = 0
@@ -85,7 +85,6 @@ for index in selected_indices:
     print(f"প্রসেস করা হচ্ছে: {title}")
     
     try:
-        # সংশোধনী ২: ব্রাউজারের পরিচয় (User-Agent) যুক্ত করা হলো
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
         response = requests.get(link, headers=headers, timeout=10) 
         soup = BeautifulSoup(response.content, 'html.parser')
@@ -98,7 +97,7 @@ You are an expert 'BCS Analyst AI'. Your task is to analyze Bengali newspaper ar
 [Current System Date for Temporal Context: {today_date}]
 
 Strict Constraints & Rules (Zero Hallucination & Source Quality Policy):
-1. STRICT GROUNDING: You must extract information ONLY from the provided article text
+1. STRICT GROUNDING: You must extract information ONLY from the provided article text.
 *Exception for Time Context*: You are allowed to deduce and add exact years/dates (but you have to provide valid source to prove your data) to replace relative temporal terms (e.g., "recent", "currently", "this year") using your system knowledge, to ensure Anki questions remain valid long-term.
 
 2. NO FABRICATION: If a required specific piece of information is missing, output exactly: "প্রবন্ধে উল্লেখ নেই".
@@ -208,7 +207,11 @@ Execution Logic - Phase 5: Exception Handling
 বিস্তারিত: {full_article}
 """
         
-        final_response = model.generate_content(prompt)
+        # নতুন SDK-তে মূল প্রম্পট এক্সিকিউশন
+        final_response = client.models.generate_content(
+            model=MODEL_ID,
+            contents=prompt
+        )
         summary = final_response.text
         
         if "Status: Irrelevant." not in summary:
@@ -223,7 +226,6 @@ Execution Logic - Phase 5: Exception Handling
         
     except Exception as e:
         print(f"এই খবরটি প্রসেস করতে ত্রুটি দেখা দিয়েছে: {e}")
-        # সংশোধনী ৪: ত্রুটি হলেও যেন রেট লিমিট ব্রেক না হয়, তাই time.sleep যুক্ত করা হলো
         time.sleep(6)
         continue 
 
