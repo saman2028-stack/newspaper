@@ -13,9 +13,9 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 TELE_BOT_TOKEN = os.environ.get("TELE_BOT_TOKEN")
 TELE_CHAT_ID = os.environ.get("TELE_CHAT_ID")
 
-# ২. নতুন জেমিনি ক্লায়েন্ট সেটআপ (আপডেটেড SDK)
+# ২. জেমিনি ক্লায়েন্ট সেটআপ (জিমিনি ৩.১ প্রো মডেল ব্যবহার করতে)
 client = genai.Client(api_key=GEMINI_API_KEY)
-MODEL_ID = 'gemini-3.8-flash'
+MODEL_ID = 'gemini-2.5-pro'
 
 def send_to_telegram(message):
     tele_url = f"https://api.telegram.org/bot{TELE_BOT_TOKEN}/sendMessage"
