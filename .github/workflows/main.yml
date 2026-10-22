@@ -1,0 +1,32 @@
+name: BCS News Automation
+
+on:
+  schedule:
+    # প্রতিদিন বাংলাদেশ সময় সকাল ৮টায় (UTC সময় রাত ২টা) রান করবে
+    - cron: '0 6 * * *'
+  workflow_dispatch: # ম্যানুয়ালি টেস্ট করার জন্য
+
+jobs:
+  run-news-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install Requirements
+      run: |
+        pip install -r requirements.txt
+
+    - name: Run BCS Analyst Script
+      env:
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        TELE_BOT_TOKEN: ${{ secrets.TELE_BOT_TOKEN }}
+        TELE_CHAT_ID: ${{ secrets.TELE_CHAT_ID }}
+      run: |
+        python main.py
