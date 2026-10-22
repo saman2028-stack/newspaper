@@ -15,7 +15,7 @@ TELE_CHAT_ID = os.environ.get("TELE_CHAT_ID")
 
 # ২. নতুন জেমিনি ক্লায়েন্ট সেটআপ (আপডেটেড SDK)
 client = genai.Client(api_key=GEMINI_API_KEY)
-MODEL_ID = 'gemini-2.0-flash'
+MODEL_ID = 'gemini-3.8-flash
 
 def send_to_telegram(message):
     tele_url = f"https://api.telegram.org/bot{TELE_BOT_TOKEN}/sendMessage"
