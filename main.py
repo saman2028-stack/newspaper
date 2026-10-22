@@ -8,14 +8,13 @@ from google import genai
 from google.genai import types
 from datetime import datetime
 
-# ১. সিন্দুক থেকে গোপন তথ্যগুলো (Secrets) বের করা
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 TELE_BOT_TOKEN = os.environ.get("TELE_BOT_TOKEN")
 TELE_CHAT_ID = os.environ.get("TELE_CHAT_ID")
 
-# ২. জেমিনি ক্লায়েন্ট সেটআপ (জিমিনি ৩.১ প্রো মডেল ব্যবহার করতে)
 client = genai.Client(api_key=GEMINI_API_KEY)
-MODEL_ID = 'gemini-3.8-flash'
+# ফ্রি এপিআই-এর জন্য সবচেয়ে স্থিতিশীল মডেল
+MODEL_ID = 'gemini-2.5-flash' 
 
 def send_to_telegram(message):
     tele_url = f"https://api.telegram.org/bot{TELE_BOT_TOKEN}/sendMessage"
@@ -55,19 +54,29 @@ Titles:
 {titles_list}
 """
 
-try:
-    # নতুন SDK-তে JSON এনফোর্সমেন্ট
-    screening_response = client.models.generate_content(
-        model=MODEL_ID,
-        contents=screening_prompt,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
+# Retry Logic: সার্ভার ব্যস্ত থাকলে সর্বোচ্চ ৩ বার চেষ্টা করবে
+max_retries = 3
+selected_indices = []
+
+for attempt in range(max_retries):
+    try:
+        screening_response = client.models.generate_content(
+            model=MODEL_ID,
+            contents=screening_prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+            )
         )
-    )
-    selected_indices = json.loads(screening_response.text)
-except Exception as e:
-    print(f"শিরোনাম বাছাই করতে সমস্যা হয়েছে: {e}")
-    selected_indices = []
+        selected_indices = json.loads(screening_response.text)
+        print("শিরোনাম বাছাই সফল হয়েছে।")
+        break 
+    except Exception as e:
+        print(f"চেষ্টা {attempt + 1} ব্যর্থ: {e}")
+        if attempt < max_retries - 1:
+            print("সার্ভার ব্যস্ত, ২০ সেকেন্ড পর আবার চেষ্টা করা হচ্ছে...")
+            time.sleep(20)
+        else:
+            print("সার্ভার অতিরিক্ত ব্যস্ত। আজকের মতো স্ক্রিনিং বাতিল করা হলো।")
 
 print(f"বাছাই করা খবরের ইনডেক্স: {selected_indices}")
 
@@ -84,14 +93,16 @@ for index in selected_indices:
     
     print(f"প্রসেস করা হচ্ছে: {title}")
     
-    try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
-        response = requests.get(link, headers=headers, timeout=10) 
-        soup = BeautifulSoup(response.content, 'html.parser')
-        paragraphs = soup.find_all('p')
-        full_article = " ".join([p.text for p in paragraphs])
-        
-        prompt = f"""
+    # বিস্তারিত খবর পড়ার ক্ষেত্রেও Retry Logic
+    for attempt in range(max_retries):
+        try:
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+            response = requests.get(link, headers=headers, timeout=10) 
+            soup = BeautifulSoup(response.content, 'html.parser')
+            paragraphs = soup.find_all('p')
+            full_article = " ".join([p.text for p in paragraphs])
+            
+            prompt = f"""
 System Role:
 You are an expert 'BCS Analyst AI'. Your task is to analyze Bengali newspaper articles and extract specific information strictly aligned with the Bangladesh Civil Service (BCS) Preliminary and Written exam syllabus.
 [Current System Date for Temporal Context: {today_date}]
@@ -206,27 +217,30 @@ Execution Logic - Phase 5: Exception Handling
 খবরের শিরোনাম: {title}
 বিস্তারিত: {full_article}
 """
-        
-        # নতুন SDK-তে মূল প্রম্পট এক্সিকিউশন
-        final_response = client.models.generate_content(
-            model=MODEL_ID,
-            contents=prompt
-        )
-        summary = final_response.text
-        
-        if "Status: Irrelevant." not in summary:
-            message = f"📚 <b>BCS Analyst AI আপডেট</b>\n\n{summary}\n\n🔗 <a href='{link}'>বিস্তারিত খবর</a>"
-            send_to_telegram(message)
-            print("টেলিগ্রামে পাঠানো হয়েছে।")
-        else:
-            print("খবরটি পরীক্ষার জন্য উপযোগী নয় (Condition A), বাদ দেওয়া হলো।")
             
-        time.sleep(6)
-        count += 1
-        
-    except Exception as e:
-        print(f"এই খবরটি প্রসেস করতে ত্রুটি দেখা দিয়েছে: {e}")
-        time.sleep(6)
-        continue 
+            final_response = client.models.generate_content(
+                model=MODEL_ID,
+                contents=prompt
+            )
+            summary = final_response.text
+            
+            if "Status: Irrelevant." not in summary:
+                message = f"📚 <b>BCS Analyst AI আপডেট</b>\n\n{summary}\n\n🔗 <a href='{link}'>বিস্তারিত খবর</a>"
+                send_to_telegram(message)
+                print("টেলিগ্রামে পাঠানো হয়েছে।")
+            else:
+                print("খবরটি পরীক্ষার জন্য উপযোগী নয় (Condition A), বাদ দেওয়া হলো।")
+                
+            break # সফল হলে লুপ থেকে বের হয়ে যাবে
+            
+        except Exception as e:
+            print(f"এই খবরটি প্রসেস করতে ত্রুটি দেখা দিয়েছে (চেষ্টা {attempt + 1}): {e}")
+            if attempt < max_retries - 1:
+                time.sleep(20)
+            else:
+                print("খবরটি স্কিপ করা হলো।")
+                
+    time.sleep(10) # প্রতিটি আলাদা খবরের মাঝে রেট লিমিট এড়াতে ১০ সেকেন্ড বিরতি
+    count += 1
 
 print("আজকের মতো নিউজ প্রসেসিং শেষ!")
