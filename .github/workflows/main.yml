@@ -3,7 +3,7 @@ name: BCS News Automation
 on:
   schedule:
     # প্রতিদিন বাংলাদেশ সময় সকাল ৮টায় (UTC সময় রাত ২টা) রান করবে
-    - cron: '0 6 * * *'
+    - cron: '0 0 * * *'
   workflow_dispatch: # ম্যানুয়ালি টেস্ট করার জন্য
 
 jobs:
